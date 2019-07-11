@@ -44,13 +44,16 @@ class CustomersRequest(Base):
 class Fallback(Base):
     __tablename__ = 'fallback'
 
+    """ For Category use: Sample Language, Dell EMC Standard Language and Fallback """
+    category = Column(String(50), nullable=False)
     content = Column(Text, nullable=False)
-    approval = Column(Text, nullable=False)
+    approval = Column(Text, nullable=True)
     issue = Column(Integer, ForeignKey('issues.issue'), nullable=False)
     request = Column(CHAR(1), ForeignKey('customers_request.id'), nullable=False)
     content_hash = Column(String(32), primary_key=True)
 
-    def __init__(self, content, approval, issue, request, content_hash):
+    def __init__(self, category, content, approval, issue, request, content_hash):
+        self.category = category
         self.content = content
         self.approval = approval
         self.issue = issue
