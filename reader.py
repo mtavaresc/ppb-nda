@@ -1,5 +1,5 @@
 from docx import Document
-from docx.shared import Pt
+from json import dumps
 from re import findall, sub, match
 # from itertools import groupby
 from base import Session, engine
@@ -14,8 +14,10 @@ def create_or_drop_db(drop=False):
 
 def extract_data_from_playbook(doc):
     issues_a, issues_b, principles_paragraph = [], [], []
+    current_tag = None
     for paragraph in doc.paragraphs:
         if paragraph.text.lower().startswith('Issue'.lower()):
+            current_tag = 'Issue'
             if match(r'(Issue\s[#]\d+[A-Z])', paragraph.text) is not None:
                 issue_paragraph = paragraph.text.split('.')[0]
                 issue_id = findall(r'(Issue\s[#]\d+[A-Z])', issue_paragraph)[0]
@@ -31,6 +33,7 @@ def extract_data_from_playbook(doc):
                 issue_name = issue_paragraph.split(':')[1].strip()
                 issues_a.append((issue_id, issue_name))
         elif paragraph.text.lower().startswith('Customer’s request'.lower()):
+            current_tag = 'Customer’s request'
             cr = paragraph.text.split(':')[1].strip()
             cr_dict = {
                 'id': 'A',
@@ -40,11 +43,17 @@ def extract_data_from_playbook(doc):
             issues_a.pop()
             issues_a.append(tup)
         elif paragraph.text.lower().startswith('Principle'.lower()):
+            current_tag = 'Principle'
             principles_paragraph.append(paragraph.text.split(':')[1].strip())
 
-        next_topic = ['Sample Language', ' Dell EMC Standard Language', 'Fallback', 'Approval', 'Section', 'Playbook']
-        if len(principles_paragraph) > 0 and any(word in paragraph.text for word in next_topic) is False:
-            principles_paragraph.append(paragraph.text)
+        next_topic = ['Sample Language', 'Dell EMC Standard Language', 'Fallback', 'Approval', 'Section', 'Playbook']
+        if len(principles_paragraph) > 0:
+            if any(paragraph.text.lower().startswith(word.lower()) for word in next_topic) is False:
+                if current_tag == 'Principle':
+                    principles_paragraph.append(paragraph.text.split(':')[1].strip())
+                    print(paragraph.text.split(':')[1].strip())
+            else:
+                current_tag = [paragraph.text.lower().startswith(word.lower()) for word in next_topic][0]
 
         principles = ''.join(principles_paragraph)
 
@@ -61,16 +70,6 @@ def extract_data_from_playbook(doc):
             continue
         except Exception as e:
             print(f'Test Error: {e}')
-            break
-            # if run.font.size and paragraph.text in next_topic:
-            #         continue
-            #     else:
-            #         print(paragraph.text)
-            # principles.append(paragraph.text)
-    # for run in paragraph.runs:
-    #     if run.bold and ':' in paragraph.text:
-    # fullText.append(para.text)
-    # return '\n'.join(fullText)
     for a in issues_a:
         for b in a:
             print(b)
@@ -109,5 +108,6 @@ if __name__ == '__main__':
     create_or_drop_db()
     rs = extract_data_from_playbook(document)
     # for r in rs:
-    #     print(r)
+    #     print(len(r[0]))
+    #     print(dumps(r[0], indent=4))
     # insert_db(rs[0], rs[1])
