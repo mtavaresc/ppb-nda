@@ -1,5 +1,5 @@
 from docx import Document
-from json import dumps
+# from json import dumps
 from re import findall, sub, match
 # from itertools import groupby
 from base import Session, engine
@@ -59,7 +59,6 @@ def extract_data_from_playbook(doc):
         if paragraph.text.lower().startswith('Principle'.lower()):
             if len(paragraph.text.split(':')[1].strip()) > 0:
                 found = True
-            #     principles_paragraph.append(paragraph.text.split(':')[1].strip())
 
         if found:
             if any(paragraph.text.lower().startswith(word.lower()) for word in next_topic) is False \
