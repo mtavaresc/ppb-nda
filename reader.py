@@ -1,5 +1,6 @@
+import sys
 from docx import Document
-# from json import dumps
+from json import dumps
 from re import findall, sub, match
 # from itertools import groupby
 from base import Session, engine
@@ -13,90 +14,105 @@ def create_or_drop_db(drop=False):
 
 
 def extract_data_from_playbook(doc):
-    issues_a, issues_b, principles_paragraph = [], [], []
-    for paragraph in doc.paragraphs:
-        if paragraph.text.lower().startswith('Issue'.lower()):
-            if match(r'(Issue\s[#]\d+[A-Z])', paragraph.text) is not None:
-                issue_paragraph = paragraph.text.split('.')[0]
+    issues, principles_paragraph = [], []
+    num_paragraph = 0
+    for para in doc.paragraphs:
+        num_paragraph += 1
+        if para.text.lower().startswith('Issue'.lower()):
+            issue_paragraph = para.text.split('.')[0]
+            if match(r'(Issue\s[#]\d+[A-Z])', para.text) is not None:
                 issue_id = findall(r'(Issue\s[#]\d+[A-Z])', issue_paragraph)[0]
                 issue_id = issue_id[issue_id.index('#') + 1:]
                 if sub(r'(Issue\s[#]\d+[A-Z])', '', issue_paragraph).split(':')[1].strip() == 'Customer’s request':
                     issue_name = sub(r'(Issue\s[#]\d+[A-Z])', '', issue_paragraph).split(':')[2].strip()
                 else:
                     issue_name = sub(r'(Issue\s[#]\d+[A-Z])', '', issue_paragraph).split(':')[1].strip()
-                issues_b.append((issue_id, issue_name))
+                if issues[-1][0] == issue_id[:-1]:
+                    _dict = {
+                        'id': issue_id[-1:],
+                        'customer_request': issue_name
+                    }
+
+                    tup = issues[-1] + (_dict,)
+                    issues[issues.index(issues[-1])] = tup
             else:
-                issue_paragraph = paragraph.text.split('.')[0].strip()
                 issue_id = issue_paragraph[issue_paragraph.index('#') + 1:issue_paragraph.index(':')]
                 issue_name = issue_paragraph.split(':')[1].strip()
-                issues_a.append((issue_id, issue_name))
-        elif paragraph.text.lower().startswith('Customer’s request'.lower()):
-            cr = paragraph.text.split(':')[1].strip()
-            cr_dict = {
+                issues.append((issue_id, issue_name))
+        elif para.text.lower().startswith('Customer’s request'.lower()):
+            cr = para.text.split(':')[1].strip()
+            _dict = {
                 'id': 'A',
                 'customer_request': cr
             }
-            tup = issues_a[-1] + ([cr_dict],)
-            issues_a.pop()
-            issues_a.append(tup)
+            tup = issues[-1] + (_dict,)
+            issues.pop()
+            issues.append(tup)
 
-    for idx, a in enumerate(issues_a):
-        list_of_cr_dict = []
-        for b in issues_b:
-            if a[0] == b[0][:-1]:
-                cr_dict = {
-                    'id': b[0][-1:],
-                    'customer_request': b[1]
-                }
-                list_of_cr_dict.append(cr_dict)
-        if len(list_of_cr_dict) > 0:
-            tup = a + (list_of_cr_dict,)
-            issues_a[idx] = tup
+        if len(issues) == 0:
+            continue
 
-    found = False
-    for paragraph in doc.paragraphs:
-        next_topic = ['Sample Language', 'Dell EMC Standard Language', 'Fallback', 'Approval']
-        if paragraph.text.lower().startswith('Principle'.lower()):
-            if len(paragraph.text.split(':')[1].strip()) > 0:
-                found = True
+        if len(issues[-1]) == 3 or len(issues[-1]) == 4:
+            found = False
+            num_paragraph_2 = 0
+            for p in doc.paragraphs:
+                num_paragraph_2 += 1
+                if num_paragraph > num_paragraph_2:
+                    continue
+                next_topic = ['Sample Language', 'Dell EMC Standard Language', 'Fallback', 'Approval']
+                if p.text.lower().startswith('Principle'.lower()):
+                    if len(p.text.split(':')[1].strip()) > 0:
+                        found = True
 
-        if found:
-            if any(paragraph.text.lower().startswith(word.lower()) for word in next_topic) is False \
-                    and paragraph.text != '':
-                principles_paragraph.append(sub(r'(Principle+?)(s\b|\b)[:]', '', paragraph.text).strip())
+                if found:
+                    if any(p.text.lower().startswith(word.lower()) for word in next_topic) is False and p.text != '':
+                        principles_paragraph.append(sub(r'(Principle+?)(s\b|\b)[:]', '', p.text).strip())
 
-        if any(paragraph.text.lower().startswith(word.lower()) for word in next_topic):
-            break
+                if any(p.text.lower().startswith(word.lower()) for word in next_topic):
+                    break
 
-    principles = '\n'.join(principles_paragraph)
-    print(principles)
+            if len(principles_paragraph) > 0:
+                principles = ''.join(principles_paragraph)
+                tup = issues[-1] + (principles,)
+                issues.pop()
+                issues.append(tup)
+                principles_paragraph.clear()
 
-    return issues_a
+    return issues
 
 
 def insert_db(issues):
     s = Session()
-    # for j in list(a for a, _ in groupby(a)):
     for i in issues:
         issue = i[0]
         name = i[1]
-        list_of_dict_cr = i[2]
-        try:
-            s.merge(Issues(issue, name))
-            for dict_cr in list_of_dict_cr:
-                s.merge(CustomersRequest(issue, dict_cr['id'], dict_cr['customer_request'], principles=''))
-
-            s.commit()
-        except Exception as e:
-            print(f'#1 Error: {e}')
-            return False
-
+        if isinstance(i[-1], dict):
+            principle = i[-2]
+        else:
+            principle = i[-1]
+        print(principle)
+        # s.merge(Issues(issue, name))
+        # for idx in range(2, len(i)):
+        #     if isinstance(i[idx], dict):
+        #         s.merge(CustomersRequest(issue, i[idx]['id'], i[idx]['customer_request'], principle))
+        #         # try:
+        #         # except Exception as e:
+        #         #     print(f'#1 Error: {e}')
+        #         #     return False
+        #
+        # s.commit()
     return True
 
 
 if __name__ == '__main__':
+    # stdoutOrigin = sys.stdout
+    # sys.stdout = open('log.txt', 'w')
+
     document = Document('samples/playbook_nda.docx')
     # create_or_drop_db()
     rs = extract_data_from_playbook(document)
     # print(dumps(rs, indent=4))
-    # insert_db(rs)
+    insert_db(rs)
+
+    # sys.stdout.close()
+    # sys.stdout = stdoutOrigin
